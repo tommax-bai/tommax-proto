@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package tommax.generation.v1;
+
+option go_package = "github.com/tommax-bai/tommax-proto/gen/go/tommax/generation/v1;generationv1";
+
+// GenerationService 是生成任务中心的对外契约（docs/02 §3.3）。
+// Phase 1 说明：REST 端点由服务内 handler 实现并遵循本契约的字段命名；
+// gRPC/网关代码接线为后续统一项（见 generation-svc README「例外登记」）。
+service GenerationService {
+  rpc SubmitGeneration(SubmitGenerationRequest) returns (SubmitGenerationResponse);
+  rpc GetGeneration(GetGenerationRequest) returns (GetGenerationResponse);
+  rpc ListGenerations(ListGenerationsRequest) returns (ListGenerationsResponse);
+  rpc CancelGeneration(CancelGenerationRequest) returns (CancelGenerationResponse);
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+}
+
+enum GenerationStatus {
+  GENERATION_STATUS_UNSPECIFIED = 0;
+  GENERATION_STATUS_PENDING = 1;
+  GENERATION_STATUS_QUEUED = 2;
+  GENERATION_STATUS_RUNNING = 3;
+  GENERATION_STATUS_SUCCEEDED = 4;
+  GENERATION_STATUS_FAILED = 5;
+  GENERATION_STATUS_CANCELED = 6;
+}
+
+message GenerationOutput {
+  string asset_url = 1;
+  string mime_type = 2;
+  int32 width = 3;
+  int32 height = 4;
+}
+
+message Generation {
+  string id = 1;
+  string user_id = 2;
+  // docs/02 任务类型全集，如 image.text2img / video.img2video。
+  string task_type = 3;
+  // 模型目录 key，如 mock-image-v1。
+  string model_key = 4;
+  string prompt = 5;
+  repeated string ref_asset_urls = 6;
+  map<string, string> params = 7;
+  GenerationStatus status = 8;
+  int32 progress = 9;
+  repeated GenerationOutput outputs = 10;
+  string error_reason = 11;
+  string created_at = 12; // RFC3339 UTC
+  string updated_at = 13;
+}
+
+message SubmitGenerationRequest {
+  string task_type = 1;
+  string model_key = 2;
+  string prompt = 3;
+  repeated string ref_asset_urls = 4;
+  map<string, string> params = 5;
+  // 客户端幂等键（docs/04 §2.4）。
+  string request_id = 6;
+  // 画布上下文（可选）：canvas_id/node_id，用于结果回写与溯源。
+  map<string, string> canvas_ctx = 7;
+}
+
+message SubmitGenerationResponse {
+  Generation generation = 1;
+}
+
+message GetGenerationRequest {
+  string id = 1;
+}
+
+message GetGenerationResponse {
+  Generation generation = 1;
+}
+
+message ListGenerationsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string task_type = 3; // 过滤，可空
+}
+
+message ListGenerationsResponse {
+  repeated Generation items = 1;
+  string next_page_token = 2;
+}
+
+message CancelGenerationRequest {
+  string id = 1;
+}
+
+message CancelGenerationResponse {
+  Generation generation = 1;
+}
+
+message ListModelsRequest {}
+
+message ModelInfo {
+  string key = 1;
+  string label = 2;
+  string capability = 3;   // 对应 task_type
+  string description = 4;
+  repeated string tags = 5; // hot / new / coming_soon
+  // 参数 JSON Schema（前端 Schema 驱动表单，docs/07）。
+  string params_schema_json = 6;
+}
+
+message ListModelsResponse {
+  repeated ModelInfo items = 1;
+}

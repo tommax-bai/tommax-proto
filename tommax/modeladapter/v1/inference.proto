@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package tommax.modeladapter.v1;
+
+option go_package = "github.com/tommax-bai/tommax-proto/gen/go/tommax/modeladapter/v1;modeladapterv1";
+
+// InferenceService 是 model-adapter-svc 的内部统一协议（docs/02 §3.4）：
+// 屏蔽供应商差异，generation-svc 只面向本协议编排。
+service InferenceService {
+  // Submit 提交推理作业，幂等键为 task_id。
+  rpc Submit(SubmitRequest) returns (SubmitResponse);
+  // Query 查询作业状态与产物。
+  rpc Query(QueryRequest) returns (QueryResponse);
+  // Cancel 尽力取消作业。
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+}
+
+// Capability 与 generation 的 task_type 对齐（docs/02 §3.3 任务类型全集的适配层视角）。
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_IMAGE_TEXT2IMG = 1;
+  CAPABILITY_IMAGE_REF2IMG = 2;
+  CAPABILITY_IMAGE_OUTPAINT = 3;
+  CAPABILITY_IMAGE_INPAINT = 4;
+  CAPABILITY_IMAGE_UPSCALE = 5;
+  CAPABILITY_VIDEO_TEXT2VIDEO = 10;
+  CAPABILITY_VIDEO_IMG2VIDEO = 11;
+  CAPABILITY_VIDEO_FLF2VIDEO = 12;
+  CAPABILITY_AUDIO_TEXT2MUSIC = 20;
+  CAPABILITY_TEXT_LLM = 30;
+}
+
+message SubmitRequest {
+  // 业务任务 id，作为幂等键：同一 task_id 重复提交返回同一 job。
+  string task_id = 1;
+  // 形如 "mock/image-v1"，由 router 解析为 provider 与其内部模型名。
+  string provider_model = 2;
+  Capability capability = 3;
+  string prompt = 4;
+  repeated string ref_urls = 5;
+  // 统一参数（width/height/n/duration 等），provider 各自映射。
+  map<string, string> params = 6;
+}
+
+message SubmitResponse {
+  string job_id = 1;
+}
+
+message QueryRequest {
+  string job_id = 1;
+}
+
+// JobStatus 的失败分类是给 generation 重试决策用的（docs/02 §3.4：adapter 只上报类别不做业务决策）。
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_RUNNING = 1;
+  JOB_STATUS_SUCCEEDED = 2;
+  JOB_STATUS_FAILED_RETRYABLE = 3;
+  JOB_STATUS_FAILED_PERMANENT = 4;
+  JOB_STATUS_CONTENT_BLOCKED = 5;
+}
+
+message Output {
+  // 供应商产物临时 URL；与 data 二选一。
+  string url = 1;
+  // 产物内容直传（mock/小文件场景）。
+  bytes data = 2;
+  string mime_type = 3;
+  int32 width = 4;
+  int32 height = 5;
+}
+
+message QueryResponse {
+  JobStatus status = 1;
+  // 0-100。
+  int32 progress = 2;
+  repeated Output outputs = 3;
+  string error_message = 4;
+}
+
+message CancelRequest {
+  string job_id = 1;
+}
+
+message CancelResponse {
+  bool canceled = 1;
+}
